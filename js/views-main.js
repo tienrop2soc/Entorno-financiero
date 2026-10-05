@@ -62,9 +62,9 @@ const Views = {};
           <p class="eyebrow">${U.esc(U.cap(new Intl.DateTimeFormat(s.settings.locale, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())))}</p>
           <h2 class="hello-t">${greeting()}</h2>
         </div>
-        <div class="hello-nw glass-pill" data-tip="${U.esc(`<b>Patrimonio neto</b><div class='tt-row'>Cuentas<span>${U.money(nw.accounts)}</span></div><div class='tt-row'>Inversiones<span>${U.money(nw.investments)}</span></div><div class='tt-row'>Me deben<span>${U.money(nw.owed)}</span></div><div class='tt-row'>Debo<span>−${U.money(nw.owe)}</span></div>`)}">
-          <span class="muted">Patrimonio</span><b class="tnum">${U.money(nw.total)}</b>
-        </div>
+        <button class="hello-nw glass-pill" data-action="go" data-route="cuentas" data-tip="${U.esc(`<b>Patrimonio neto</b><div class='tt-row'>Bancos<span>${U.money(nw.banks)}</span></div><div class='tt-row'>Efectivo<span>${U.money(nw.cash)}</span></div><div class='tt-row'>Inversiones<span>${U.money(nw.investments)}</span></div><div class='tt-row'>Me deben<span>${U.money(nw.owed)}</span></div><div class='tt-row'>Debo<span>−${U.money(nw.owe)}</span></div>`)}">
+          <span class="muted">Patrimonio</span><b class="tnum">${U.money(nw.total)}</b>${icon('chevR', 16)}
+        </button>
       </section>
 
       <p class="label-row">Gastos de un vistazo <span class="muted">· ingresos y balance debajo</span></p>
@@ -127,8 +127,8 @@ const Views = {};
               : `<p class="muted small">Sin cargos fijos próximos. Añade alquiler, suscripciones o tu sueldo en <button class="link" data-action="go" data-route="recurrentes">Recurrentes</button>.</p>`}
           </div>
           <div class="card glass">
-            ${H.sectionHead('Cuentas', `<button class="link" data-action="go" data-route="cuentas">Ver</button>`)}
-            <div class="mini-list">${s.accounts.filter((a) => !a.archived).map((a) => `<div class="mini"><span class="cat-ic">${icon(ACCOUNT_ICONS[a.type] || 'wallet', 16)}</span><span class="mini-main"><b>${U.esc(a.name)}</b></span><span class="tnum">${U.money(Store.accountBalance(a.id))}</span></div>`).join('')}</div>
+            ${H.sectionHead('Cuentas y efectivo', `<button class="link" data-action="go" data-route="cuentas">Gestionar</button>`)}
+            <div class="mini-list">${s.accounts.filter((a) => !a.archived).map((a) => `<div class="mini"><span class="cat-ic">${icon(accIcon(a), 16)}</span><span class="mini-main"><b>${U.esc(a.name)}</b></span><span class="tnum">${U.money(Store.accountBalance(a.id))}</span></div>`).join('')}</div>
           </div>
         </div>
       </section>`;
@@ -214,7 +214,7 @@ const Views = {};
       if (movFilter.cat && t.categoryId !== movFilter.cat) return false;
       if (movFilter.acc && t.accountId !== movFilter.acc && t.toAccountId !== movFilter.acc) return false;
       if (q) {
-        const hay = `${t.note || ''} ${t.type === 'transfer' ? 'transferencia' : Store.cat(t.categoryId).name} ${(Store.account(t.accountId) || {}).name || ''} ${String(t.amount).replace('.', ',')}`.toLowerCase();
+        const hay = `${t.note || ''} ${t.type === 'transfer' ? 'transferencia' : t.type === 'adjust' ? 'ajuste de saldo' : Store.cat(t.categoryId).name} ${(Store.account(t.accountId) || {}).name || ''} ${String(t.amount).replace('.', ',')}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;

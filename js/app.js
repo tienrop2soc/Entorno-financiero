@@ -13,7 +13,7 @@ const ROUTES = [
   { id: 'ahorro', title: 'Ahorro', icon: 'target', group: 'Planificación' },
   { id: 'deudas', title: 'Deudas', icon: 'users', group: 'Planificación' },
   { id: 'inversiones', title: 'Inversiones', icon: 'trendingUp', group: 'Planificación' },
-  { id: 'cuentas', title: 'Cuentas', icon: 'wallet', group: 'Planificación' },
+  { id: 'cuentas', title: 'Cuentas y efectivo', icon: 'wallet', group: 'Planificación' },
   { id: 'ajustes', title: 'Ajustes', icon: 'sliders', group: 'Sistema' },
 ];
 const TABBAR = ['resumen', 'movimientos', '+', 'informes', 'more'];
@@ -187,11 +187,11 @@ const App = {
   },
   exportCsv(list, name) {
     const q = (s) => `"${String(s == null ? '' : s).replace(/"/g, '""')}"`;
-    const typeName = { expense: 'Gasto', income: 'Ingreso', transfer: 'Transferencia' };
+    const typeName = { expense: 'Gasto', income: 'Ingreso', transfer: 'Transferencia', adjust: 'Ajuste de saldo' };
     const rows = [['Fecha', 'Tipo', 'Categoría', 'Cuenta', 'Cuenta destino', 'Importe', 'Nota'].map(q).join(';')];
     [...list].sort((a, b) => a.date.localeCompare(b.date)).forEach((t) => {
       const amount = (t.type === 'expense' ? -t.amount : t.amount).toFixed(2).replace('.', ',');
-      rows.push([t.date, typeName[t.type], t.type === 'transfer' ? '' : Store.cat(t.categoryId).name, (Store.account(t.accountId) || {}).name || '', (Store.account(t.toAccountId) || {}).name || '', amount, t.note || ''].map(q).join(';'));
+      rows.push([t.date, typeName[t.type], t.type === 'transfer' || t.type === 'adjust' ? '' : Store.cat(t.categoryId).name, (Store.account(t.accountId) || {}).name || '', (Store.account(t.toAccountId) || {}).name || '', amount, t.note || ''].map(q).join(';'));
     });
     UI.download(`${name}-${U.today()}.csv`, '﻿' + rows.join('\r\n'), 'text/csv;charset=utf-8');
     UI.toast(`${list.length} movimientos exportados`);
@@ -206,6 +206,10 @@ const Demo = {
     s.accounts[0].initial = 2400;
     s.accounts[1].initial = 120;
     s.accounts[2].initial = 6000;
+    s.accounts[1].icon = 'wallet';
+    s.accounts.push({ id: 'a_casa', name: 'Casa', type: 'efectivo', initial: 450, place: 'Cajón del dormitorio', icon: 'home' });
+    s.accounts.push({ id: 'a_pueblo', name: 'Casa del pueblo', type: 'efectivo', initial: 200, place: 'Caja fuerte', icon: 'mapPin' });
+    s.accounts.push({ id: 'a_revolut', name: 'Revolut', type: 'banco', initial: 180, place: 'Viajes y compras online', icon: 'card' });
     let seed = 7;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
     const between = (a, b) => U.round2(a + rnd() * (b - a));
@@ -259,6 +263,8 @@ const Demo = {
       const date = U.addMonths(U.range('month', today).start, -i, 29);
       if (date <= today) s.transactions.push({ id: 'tr' + i, createdAt: Date.now(), type: 'transfer', amount: 300, accountId: 'a_banco', toAccountId: 'a_ahorro', date, note: 'Ahorro mensual' });
     }
+    // Ajuste de saldo de ejemplo (recuento del efectivo de casa)
+    s.transactions.push({ id: 'adj1', createdAt: Date.now(), type: 'adjust', amount: -35, accountId: 'a_casa', date: U.addDays(today, -6), note: 'Recuento de efectivo', categoryId: null });
     // Presupuestos
     const budgets = { c_super: 320, c_restaurantes: 180, c_cafe: 45, c_ocio: 120, c_combustible: 110, c_ropa: 80, c_transporte: 40 };
     s.categories.forEach((c) => { if (budgets[c.id]) c.budget = budgets[c.id]; });

@@ -173,12 +173,13 @@ const UI = (() => {
     `<div class="select"><select class="input" name="${name}" ${attrs}>${options.map((o) => `<option value="${U.esc(o.value)}" ${String(o.value) === String(value) ? 'selected' : ''}>${U.esc(o.label)}</option>`).join('')}</select>${icon('chevD', 16)}</div>`;
   const check = (name, label, checked) =>
     `<label class="check"><input type="checkbox" name="${name}" ${checked ? 'checked' : ''}><span class="switch" aria-hidden="true"></span><span>${label}</span></label>`;
+  const accountLabel = (a) => (a.type === 'efectivo' && !/efectivo|cartera|metálico/i.test(a.name) ? `Efectivo · ${a.name}` : a.name);
   const accountOptions = (includeArchived = false) =>
-    Store.state.accounts.filter((a) => includeArchived || !a.archived).map((a) => ({ value: a.id, label: a.name }));
+    Store.state.accounts.filter((a) => includeArchived || !a.archived).map((a) => ({ value: a.id, label: accountLabel(a) + (a.archived ? ' (archivada)' : '') }));
   const categoryOptions = (type) => Store.cats(type).map((c) => ({ value: c.id, label: c.name }));
 
-  function iconPicker(name, value) {
-    return `<div class="icon-picker" role="radiogroup">${PICKABLE_ICONS.map((ic) => `
+  function iconPicker(name, value, list = PICKABLE_ICONS) {
+    return `<div class="icon-picker" role="radiogroup">${list.map((ic) => `
       <label class="ip-item"><input type="radio" name="${name}" value="${ic}" ${ic === value ? 'checked' : ''}><span>${icon(ic, 20)}</span></label>`).join('')}</div>`;
   }
 
@@ -194,7 +195,7 @@ const UI = (() => {
 
   return {
     $, $$, modal, closeTop, hasModal, confirm, toast, initTooltip, applyTheme, seg, animateSegs, segSelect,
-    formData, field, input, moneyInput, select, check, accountOptions, categoryOptions, iconPicker, download,
+    formData, field, input, moneyInput, select, check, accountOptions, accountLabel, categoryOptions, iconPicker, download,
   };
 })();
 
@@ -202,23 +203,25 @@ const UI = (() => {
 const H = {
   txTitle(t) {
     if (t.type === 'transfer') return t.note || 'Transferencia';
+    if (t.type === 'adjust') return t.note || 'Ajuste de saldo';
     return t.note || Store.cat(t.categoryId).name;
   },
   txRow(t, { showDate = false } = {}) {
-    const isT = t.type === 'transfer';
-    const c = isT ? { name: 'Transferencia', icon: 'swap' } : Store.cat(t.categoryId);
+    const isT = t.type === 'transfer', isA = t.type === 'adjust';
+    const c = isT ? { name: 'Transferencia', icon: 'swap' } : isA ? { name: 'Ajuste de saldo', icon: 'sliders' } : Store.cat(t.categoryId);
     const acc = Store.account(t.accountId);
     const parts = isT
       ? [`${acc ? acc.name : '—'} → ${(Store.account(t.toAccountId) || {}).name || '—'}`]
-      : [t.note ? c.name : '', acc ? acc.name : ''];
+      : isA ? [t.note ? 'Ajuste de saldo' : '', acc ? acc.name : '']
+        : [t.note ? c.name : '', acc ? acc.name : ''];
     if (showDate) parts.unshift(U.dayLabel(t.date));
     if (t.recurringId) parts.push('Recurrente');
     const sub = parts.filter(Boolean).join(' · ');
-    const sign = t.type === 'income' ? '+' : t.type === 'expense' ? '−' : '';
+    const sign = t.type === 'income' || (isA && t.amount > 0) ? '+' : t.type === 'expense' || (isA && t.amount < 0) ? '−' : '';
     return `<button class="tx" data-action="editTx" data-id="${t.id}">
       <span class="tx-ic">${icon(c.icon, 18)}</span>
       <span class="tx-main"><span class="tx-title">${U.esc(H.txTitle(t))}</span><span class="tx-sub">${U.esc(sub)}</span></span>
-      <span class="tx-amt ${t.type}">${sign}${U.money(t.amount)}</span>
+      <span class="tx-amt ${t.type}">${sign}${U.money(Math.abs(t.amount))}</span>
     </button>`;
   },
   txGroups(txs, { limitDays = 0 } = {}) {

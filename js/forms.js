@@ -7,6 +7,7 @@ const Forms = (() => {
   function tx(opts = {}) {
     const editing = opts.tx || null;
     if (editing && editing.payrollId && Store.get('payrolls', editing.payrollId)) return payroll(Store.get('payrolls', editing.payrollId));
+    if (editing && editing.type === 'adjust') { const acc = Store.account(editing.accountId); if (acc) return adjust(acc, editing); }
     const accs = UI.accountOptions();
     const st = {
       type: editing ? editing.type : opts.type || 'expense',
@@ -15,6 +16,7 @@ const Forms = (() => {
     };
     const lastAcc = S().settings.lastAccount && Store.account(S().settings.lastAccount) ? S().settings.lastAccount : (accs[0] || {}).value;
 
+    const fromAcc = opts.accountId && Store.account(opts.accountId) ? opts.accountId : lastAcc;
     function sortedCats(type) {
       const usage = Store.categoryUsage(type);
       return [...Store.cats(type)].sort((a, b) => (usage[b.id] || 0) - (usage[a.id] || 0));
@@ -22,8 +24,8 @@ const Forms = (() => {
     function catGrid() {
       if (st.type === 'transfer') {
         return `<div class="grid2">
-          ${UI.field('Desde', UI.select('accountId', accs, editing ? editing.accountId : lastAcc))}
-          ${UI.field('Hacia', UI.select('toAccountId', accs, editing ? editing.toAccountId : (accs[1] || accs[0] || {}).value))}
+          ${UI.field('Desde', UI.select('accountId', accs, editing ? editing.accountId : fromAcc))}
+          ${UI.field('Hacia', UI.select('toAccountId', accs, editing ? editing.toAccountId : (accs.find((x) => x.value !== fromAcc) || accs[0] || {}).value))}
         </div>`;
       }
       const list = sortedCats(st.type);
@@ -55,7 +57,7 @@ const Forms = (() => {
         <div class="cat-zone">${catGrid()}</div>
         ${UI.field('Fecha', dateChips())}
         <div class="grid2 acc-row" ${st.type === 'transfer' ? 'hidden' : ''}>
-          ${UI.field('Cuenta', UI.select('accountIdMain', accs, editing ? editing.accountId : lastAcc))}
+          ${UI.field('Cuenta', UI.select('accountIdMain', accs, editing ? editing.accountId : fromAcc))}
           ${UI.field('Nota', UI.input('note', { value: editing ? editing.note || '' : opts.note || '', placeholder: 'Opcional' }))}
         </div>
         <div class="note-transfer" ${st.type === 'transfer' ? '' : 'hidden'}>${UI.field('Nota', UI.input('noteT', { value: editing ? editing.note || '' : '', placeholder: 'Opcional' }))}</div>
@@ -545,40 +547,193 @@ const Forms = (() => {
     }
   }
 
-  /* ---------- Cuentas ---------- */
+  /* ---------- Cuentas bancarias y efectivo ---------- */
+  const ACCOUNT_ICON_CHOICES = ['bank', 'card', 'wallet', 'home', 'mapPin', 'target', 'briefcase', 'package', 'shield', 'layers', 'dollar', 'globe', 'star', 'user'];
+  const DEFAULT_ACCOUNT_ICON = { banco: 'bank', efectivo: 'home', tarjeta: 'card', ahorro: 'target', otra: 'layers' };
+
   function account(a = {}) {
     const editing = !!a.id;
-    const types = [{ value: 'banco', label: 'Cuenta bancaria' }, { value: 'efectivo', label: 'Efectivo' }, { value: 'tarjeta', label: 'Tarjeta' }, { value: 'ahorro', label: 'Ahorro' }, { value: 'otra', label: 'Otra' }];
+    const cash = (a.type || 'banco') === 'efectivo';
+    const balance = editing ? Store.accountBalance(a.id) : a.initial || '';
+    const types = [{ value: 'banco', label: 'Cuenta bancaria' }, { value: 'efectivo', label: 'Efectivo en un lugar' }, { value: 'ahorro', label: 'Cuenta de ahorro' }, { value: 'tarjeta', label: 'Tarjeta' }, { value: 'otra', label: 'Otra' }];
+    const texts = (isCash) => isCash
+      ? { name: 'Nombre del lugar', ph: 'p. ej. Casa, Casa de la playa, Cartera, Caja fuerte', place: 'Dónde está exactamente', placePh: 'p. ej. Cajón del dormitorio' }
+      : { name: 'Nombre de la cuenta', ph: 'p. ej. BBVA nómina, Revolut, ING ahorro', place: 'Nota', placePh: 'p. ej. IBAN terminado en 1234' };
+    const t0 = texts(cash);
     const body = `<form>
-      ${UI.field('Nombre', UI.input('name', { value: a.name || '', placeholder: 'p. ej. BBVA, Revolut, Hucha', attrs: 'required autofocus' }))}
-      <div class="grid2">
-        ${UI.field('Tipo', UI.select('type', types, a.type || 'banco'))}
-        ${UI.field('Saldo inicial', UI.moneyInput('initial', a.initial, ''), 'Saldo antes de tu primer movimiento')}
-      </div>
+      ${UI.field('Tipo', UI.select('type', types, a.type || 'banco', 'data-acc-type'))}
+      <label class="field"><span class="field-l" data-l="name">${t0.name}</span>${UI.input('name', { value: a.name || '', placeholder: t0.ph, attrs: 'required autofocus maxlength="40"' })}</label>
+      ${UI.field(editing ? 'Saldo actual' : 'Cuánto hay ahora', UI.moneyInput('balance', balance), editing ? 'Si lo cambias se guarda como ajuste de saldo: cambia tu patrimonio pero no cuenta como gasto ni ingreso.' : 'Se suma a tu patrimonio desde hoy. Puede ser negativo, por ejemplo en una tarjeta.')}
+      <label class="field"><span class="field-l" data-l="place">${t0.place}</span>${UI.input('place', { value: a.place || '', placeholder: t0.placePh, attrs: 'maxlength="60"' })}</label>
+      ${UI.field('Icono', UI.iconPicker('icon', a.icon || DEFAULT_ACCOUNT_ICON[a.type || 'banco'], ACCOUNT_ICON_CHOICES))}
       <button type="submit" hidden></button>
     </form>`;
+    const footer = !editing
+      ? `<button class="btn btn-primary" data-action="save">${icon('check', 18)} Añadir</button>`
+      : a.archived
+        ? `<button class="btn btn-danger-ghost" data-action="remove">${icon('trash', 18)} Eliminar</button><button class="btn" data-action="restore">${icon('rotate', 18)} Restaurar</button><button class="btn btn-primary" data-action="save">Guardar</button>`
+        : `<button class="btn btn-danger-ghost" data-action="remove">${icon('trash', 18)} Quitar</button><button class="btn btn-primary" data-action="save">Guardar</button>`;
     UI.modal({
-      title: editing ? 'Editar cuenta' : 'Nueva cuenta', body,
-      footer: `${editing ? `<button class="btn btn-danger-ghost" data-action="del">${icon('trash', 18)} ${a.archived ? 'Eliminar' : 'Archivar'}</button>` : ''}<button class="btn btn-primary" data-action="save">Guardar</button>`,
+      title: editing ? (cash ? 'Editar efectivo' : 'Editar cuenta') : (cash ? 'Nuevo lugar con efectivo' : 'Nueva cuenta'),
+      body, footer,
+      onMount: (m) => {
+        m.$('[data-acc-type]').addEventListener('change', (e) => {
+          const t = texts(e.target.value === 'efectivo');
+          m.$('[data-l=name]').textContent = t.name;
+          m.$('[name=name]').placeholder = t.ph;
+          m.$('[data-l=place]').textContent = t.place;
+          m.$('[name=place]').placeholder = t.placePh;
+          if (!editing) {
+            const r = m.$(`.icon-picker input[value="${DEFAULT_ACCOUNT_ICON[e.target.value]}"]`);
+            if (r) r.checked = true;
+          }
+        });
+      },
       actions: {
         save: (b, e, m) => submit(m),
         submit: (f, e, m) => submit(m),
-        del: async (b, e, m) => {
-          if (!(await UI.confirm('Si la cuenta tiene movimientos se archivará en lugar de borrarse.', { ok: 'Continuar' }))) return;
-          const archived = Store.deleteAccount(a.id);
-          UI.toast(archived ? 'Cuenta archivada' : 'Cuenta eliminada');
-          m.close();
-        },
+        remove: (b, e, m) => removeAccount(a, () => m.close()),
+        restore: (b, e, m) => { Store.update('accounts', a.id, { archived: false }); UI.toast(`${a.name} vuelve a contar en tu patrimonio`); m.close(); },
       },
     });
     function submit(m) {
       const f = UI.formData(m.$('form'));
       if (!f.name) return UI.toast('Pon un nombre.');
-      const data = { name: f.name, type: f.type, initial: U.round2(U.parseAmount(f.initial)) || 0 };
-      if (editing) Store.update('accounts', a.id, data);
-      else Store.add('accounts', data);
+      const target = U.round2(U.parseAmount(f.balance)) || 0;
+      const data = { name: f.name, type: f.type, place: f.place || '', icon: f.icon || DEFAULT_ACCOUNT_ICON[f.type] };
+      if (editing) {
+        Store.update('accounts', a.id, data);
+        const delta = U.round2(target - Store.accountBalance(a.id));
+        if (delta) {
+          const tx = Store.adjustBalance(a.id, delta, { note: 'Ajuste de saldo' });
+          UI.toast(`Saldo de ${data.name}: ${U.money(target)}`, { action: 'Deshacer', onAction: () => Store.remove('transactions', tx.id) });
+        } else UI.toast('Cambios guardados');
+      } else {
+        Store.add('accounts', { ...data, initial: target });
+        UI.toast(`${data.name} añadida con ${U.money(target)}`);
+      }
       m.close();
     }
+  }
+
+  /* Ajustar el saldo de una cuenta: fijar el total, añadir o retirar dinero. */
+  function adjust(a, tx = null) {
+    const editing = !!tx;
+    const current = Store.accountBalance(a.id);
+    let mode = editing ? (tx.amount >= 0 ? 'add' : 'sub') : 'set';
+    const opts = editing
+      ? [{ value: 'add', label: 'Añadir' }, { value: 'sub', label: 'Retirar' }]
+      : [{ value: 'set', label: 'Fijar saldo' }, { value: 'add', label: 'Añadir' }, { value: 'sub', label: 'Retirar' }];
+    const labelFor = (md) => (md === 'set' ? 'Saldo real ahora' : md === 'add' ? 'Importe que añades' : 'Importe que retiras');
+    const body = `<form>
+      ${UI.seg('adjMode', opts, mode, 'adjMode')}
+      <label class="field"><span class="field-l" data-l="amt">${labelFor(mode)}</span>${UI.moneyInput('amount', editing ? Math.abs(tx.amount) : mode === 'set' ? current : '', 'autofocus')}</label>
+      <div class="adj-preview"></div>
+      <div class="grid2">
+        ${UI.field('Fecha', UI.input('date', { type: 'date', value: editing ? tx.date : U.today() }))}
+        ${UI.field('Motivo', UI.input('note', { value: editing ? tx.note || '' : '', placeholder: 'p. ej. Recuento, regalo, cuadre' }))}
+      </div>
+      <p class="field-h">Los ajustes cambian tu patrimonio, pero no cuentan como gasto ni como ingreso en tus estadísticas. Para apuntar una compra usa «Añadir movimiento».</p>
+      <button type="submit" hidden></button>
+    </form>`;
+    UI.modal({
+      title: `${editing ? 'Editar ajuste' : 'Ajustar saldo'} · ${a.name}`, body,
+      footer: `${editing ? `<button class="btn btn-danger-ghost" data-action="del">${icon('trash', 18)} Eliminar</button>` : ''}<button class="btn btn-primary" data-action="save">${icon('check', 18)} Guardar</button>`,
+      onMount: (m) => {
+        UI.animateSegs(m.el);
+        m.$('[name=amount]').addEventListener('input', () => preview(m));
+        preview(m);
+      },
+      actions: {
+        adjMode: (b, e, m) => {
+          UI.segSelect(b);
+          const prev = mode;
+          mode = b.dataset.value;
+          m.$('[data-l=amt]').textContent = labelFor(mode);
+          const inp = m.$('[name=amount]');
+          if (mode === 'set') inp.value = U.inputAmount(current);
+          else if (prev === 'set') inp.value = '';
+          inp.focus();
+          preview(m);
+        },
+        save: (b, e, m) => submit(m),
+        submit: (f, e, m) => submit(m),
+        del: async (b, e, m) => {
+          if (!(await UI.confirm('Se eliminará este ajuste y el saldo volverá a como estaba.', { ok: 'Eliminar' }))) return;
+          const removed = Store.remove('transactions', tx.id);
+          m.close();
+          UI.toast('Ajuste eliminado', { action: 'Deshacer', onAction: () => Store.add('transactions', removed) });
+        },
+      },
+    });
+    function delta(m) {
+      const v = U.parseAmount(m.$('[name=amount]').value);
+      if (!isFinite(v)) return NaN;
+      const base = editing ? current - tx.amount : current;
+      if (mode === 'set') return U.round2(v - base);
+      return U.round2(mode === 'add' ? Math.abs(v) : -Math.abs(v));
+    }
+    function preview(m) {
+      const d = delta(m);
+      const base = editing ? current - tx.amount : current;
+      m.$('.adj-preview').innerHTML = isFinite(d)
+        ? `<div class="kv"><span>Antes</span><span class="tnum">${U.money(base)}</span></div>
+           <div class="kv"><span>Cambio</span><span class="tnum">${d > 0 ? '+' : d < 0 ? '−' : ''}${U.money(Math.abs(d))}</span></div>
+           <div class="kv"><span>Después</span><b class="tnum">${U.money(base + d)}</b></div>`
+        : `<div class="kv"><span>Saldo actual</span><b class="tnum">${U.money(base)}</b></div>`;
+    }
+    function submit(m) {
+      const d = delta(m);
+      if (!isFinite(d)) return UI.toast('Introduce un importe.');
+      const f = UI.formData(m.$('form'));
+      if (editing) {
+        if (!d) return UI.toast('El importe no puede ser 0. Usa Eliminar para quitar el ajuste.');
+        Store.update('transactions', tx.id, { amount: d, date: f.date || tx.date, note: f.note || '' });
+        UI.toast('Ajuste actualizado');
+        return m.close();
+      }
+      if (!d) return UI.toast('El saldo no cambia.');
+      const created = Store.adjustBalance(a.id, d, { date: f.date, note: f.note || (mode === 'set' ? 'Ajuste de saldo' : mode === 'add' ? 'Dinero añadido' : 'Dinero retirado') });
+      UI.toast(`${a.name}: ${U.money(Store.accountBalance(a.id))}`, { action: 'Deshacer', onAction: () => Store.remove('transactions', created.id) });
+      m.close();
+    }
+  }
+
+  /* Quitar una cuenta: sin movimientos se borra; con movimientos se elige archivar o borrar todo. */
+  async function removeAccount(a, done) {
+    const others = Store.state.accounts.filter((x) => x.id !== a.id && !x.archived);
+    if (!others.length) return UI.toast('Necesitas al menos otra cuenta activa antes de quitar esta.');
+    const n = Store.accountTxCount(a.id);
+    const bal = Store.accountBalance(a.id);
+    if (!n) {
+      if (!(await UI.confirm(`Se eliminará «${a.name}»${bal ? ` y su saldo de ${U.money(bal)} dejará de contar en tu patrimonio` : ''}.`, { ok: 'Eliminar' }))) return;
+      Store.remove('accounts', a.id);
+      UI.toast(`${a.name} eliminada`);
+      return done && done();
+    }
+    UI.modal({
+      title: `Quitar «${a.name}»`, size: 'sm',
+      body: `<p class="muted">Tiene <b>${n}</b> movimientos y un saldo de <b class="tnum">${U.money(bal)}</b>.</p>
+        <div class="choice-list">
+          ${a.archived ? '' : `<button class="choice" data-action="archive"><b>${icon('package', 18)} Archivar</b><span>Desaparece de tus cuentas y del patrimonio. Tus estadísticas y el historial se conservan. Puedes restaurarla cuando quieras.</span></button>`}
+          <button class="choice" data-action="hard"><b>${icon('trash', 18)} Eliminar con sus movimientos</b><span>Borra la cuenta y sus ${n} movimientos. Tus totales de gastos e ingresos cambiarán. No se puede deshacer.</span></button>
+        </div>`,
+      actions: {
+        archive: (b, e, m) => {
+          Store.update('accounts', a.id, { archived: true });
+          UI.toast(`${a.name} archivada`, { action: 'Deshacer', onAction: () => Store.update('accounts', a.id, { archived: false }) });
+          m.close();
+          done && done();
+        },
+        hard: async (b, e, m) => {
+          if (!(await UI.confirm(`Se borrarán «${a.name}» y sus ${n} movimientos para siempre.`, { ok: 'Eliminar todo' }))) return;
+          Store.deleteAccountHard(a.id);
+          UI.toast(`${a.name} eliminada`);
+          m.close();
+          done && done();
+        },
+      },
+    });
   }
 
   /* ---------- Acceso rápido (favorito) ---------- */
@@ -642,5 +797,5 @@ const Forms = (() => {
     }
   }
 
-  return { tx, quick, category, payroll, payrollCalculator, recurring, goal, goalMove, debt, debtPayment, investment, account, quickEdit, budgets };
+  return { tx, quick, category, payroll, payrollCalculator, recurring, goal, goalMove, debt, debtPayment, investment, account, adjust, removeAccount, quickEdit, budgets };
 })();

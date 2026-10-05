@@ -52,7 +52,7 @@ const Store = (() => {
       settings: { currency: 'EUR', locale: 'es-ES', theme: 'auto', weekStart: 1, name: '', monthlyBudget: 0 },
       accounts: [
         { id: 'a_banco', name: 'Cuenta principal', type: 'banco', initial: 0 },
-        { id: 'a_efectivo', name: 'Efectivo', type: 'efectivo', initial: 0 },
+        { id: 'a_efectivo', name: 'Cartera', type: 'efectivo', initial: 0, place: 'Lo que llevo encima' },
         { id: 'a_ahorro', name: 'Cuenta ahorro', type: 'ahorro', initial: 0 },
       ],
       categories: DEFAULT_CATEGORIES.map(([id, name, type, ic]) => ({ id, name, type, icon: ic, budget: 0 })),
@@ -179,7 +179,7 @@ const Store = (() => {
   function series(r, unit) {
     const map = {};
     for (const t of state.transactions) {
-      if (!inRange(t, r) || t.type === 'transfer') continue;
+      if (!inRange(t, r) || (t.type !== 'income' && t.type !== 'expense')) continue;
       const k = unit === 'month' ? t.date.slice(0, 7) : t.date;
       const e = map[k] || (map[k] = { income: 0, expense: 0 });
       e[t.type] += t.amount;
@@ -193,6 +193,7 @@ const Store = (() => {
     for (const t of state.transactions) {
       if (t.type === 'income' && t.accountId === id) b += t.amount;
       else if (t.type === 'expense' && t.accountId === id) b -= t.amount;
+      else if (t.type === 'adjust' && t.accountId === id) b += t.amount;
       else if (t.type === 'transfer') {
         if (t.accountId === id) b -= t.amount;
         if (t.toAccountId === id) b += t.amount;
@@ -200,7 +201,8 @@ const Store = (() => {
     }
     return U.round2(b);
   }
-  const totalBalance = () => U.round2(U.sum(state.accounts.filter((a) => !a.archived), (a) => accountBalance(a.id)));
+  const totalBalance = (filter = () => true) => U.round2(U.sum(state.accounts.filter((a) => !a.archived && filter(a)), (a) => accountBalance(a.id)));
+  const isCash = (a) => a.type === 'efectivo';
 
   const debtPaid = (d) => U.round2(U.sum(d.payments || [], (p) => p.amount));
   const debtLeft = (d) => U.round2(Math.max(0, d.total - debtPaid(d)));
@@ -210,7 +212,7 @@ const Store = (() => {
     const inv = U.sum(state.investments, (i) => i.value);
     const owe = U.sum(state.debts.filter((d) => d.direction === 'owe'), debtLeft);
     const owed = U.sum(state.debts.filter((d) => d.direction === 'owed'), debtLeft);
-    return { accounts: totalBalance(), investments: U.round2(inv), owe: U.round2(owe), owed: U.round2(owed), total: U.round2(totalBalance() + inv + owed - owe) };
+    return { accounts: totalBalance(), banks: totalBalance((a) => !isCash(a)), cash: totalBalance(isCash), investments: U.round2(inv), owe: U.round2(owe), owed: U.round2(owed), total: U.round2(totalBalance() + inv + owed - owe) };
   }
 
   /* Uso de categorías en los últimos 120 días, para ordenarlas en el alta rápida. */
@@ -392,6 +394,29 @@ const Store = (() => {
       s.categories = s.categories.filter((x) => x.id !== id);
     });
   }
+  const accountTxCount = (id) => state.transactions.filter((t) => t.accountId === id || t.toAccountId === id).length;
+
+  /* Cambia el saldo de una cuenta sin contar como gasto ni ingreso. */
+  function adjustBalance(accountId, delta, { date, note } = {}) {
+    delta = U.round2(delta);
+    if (!delta) return null;
+    return add('transactions', { type: 'adjust', amount: delta, accountId, date: date || U.today(), note: note || '', categoryId: null });
+  }
+
+  /* Elimina la cuenta y todos sus movimientos (también nóminas ligadas a ellos). */
+  function deleteAccountHard(id) {
+    batch((s) => {
+      const fallback = (s.accounts.find((a) => a.id !== id && !a.archived) || {}).id;
+      const removed = new Set(s.transactions.filter((t) => t.accountId === id || t.toAccountId === id).map((t) => t.id));
+      s.transactions = s.transactions.filter((t) => !removed.has(t.id));
+      s.payrolls = s.payrolls.filter((p) => !removed.has(p.transactionId));
+      s.debts.forEach((d) => (d.payments || []).forEach((p) => { if (removed.has(p.txId)) delete p.txId; }));
+      s.recurring.forEach((r) => { if (r.accountId === id) r.accountId = fallback; });
+      if (s.settings.lastAccount === id) s.settings.lastAccount = fallback;
+      s.accounts = s.accounts.filter((a) => a.id !== id);
+    });
+  }
+
   function deleteAccount(id) {
     const used = state.transactions.some((t) => t.accountId === id || t.toAccountId === id);
     if (used) update('accounts', id, { archived: true });
@@ -406,5 +431,6 @@ const Store = (() => {
     debtPaid, debtLeft, goalSaved, netWorth, categoryUsage,
     nextOccurrence, firstUpcoming, projectExpense, processRecurring, registerRecurringNow, monthlyEquivalent, upcoming,
     savePayroll, deletePayroll, addDebtPayment, deleteDebtPayment, deleteCategory, deleteAccount,
+    accountTxCount, adjustBalance, deleteAccountHard, isCash,
   };
 })();

@@ -1,7 +1,8 @@
 'use strict';
 /* Vistas de planificación: Nómina, Recurrentes, Presupuestos, Ahorro, Deudas, Inversiones, Cuentas y Ajustes. */
-const ACCOUNT_ICONS = { banco: 'bank', efectivo: 'wallet', tarjeta: 'card', ahorro: 'target', otra: 'layers' };
+const ACCOUNT_ICONS = { banco: 'bank', efectivo: 'home', tarjeta: 'card', ahorro: 'target', otra: 'layers' };
 const ACCOUNT_TYPES = { banco: 'Cuenta bancaria', efectivo: 'Efectivo', tarjeta: 'Tarjeta', ahorro: 'Ahorro', otra: 'Otra' };
+const accIcon = (a) => a.icon || ACCOUNT_ICONS[a.type] || 'wallet';
 
 (() => {
   const S = () => Store.state;
@@ -363,42 +364,86 @@ const ACCOUNT_TYPES = { banco: 'Cuenta bancaria', efectivo: 'Efectivo', tarjeta:
     };
   };
 
-  /* ================= CUENTAS ================= */
+  /* ================= CUENTAS Y EFECTIVO (PATRIMONIO) ================= */
   Views.cuentas = () => {
     const accs = S().accounts;
     const nw = Store.netWorth();
     const monthR = U.range('month', U.today());
+    const active = accs.filter((a) => !a.archived);
+    const banks = active.filter((a) => !Store.isCash(a)), cash = active.filter((a) => Store.isCash(a));
+    const archived = accs.filter((a) => a.archived);
+    const liquid = Math.max(0, U.sum(active, (a) => Math.max(0, Store.accountBalance(a.id))));
+    const adjustments = S().transactions.filter((t) => t.type === 'adjust').sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 8);
+
     const card = (a) => {
       const bal = Store.accountBalance(a.id);
       const mov = S().transactions.filter((t) => (t.accountId === a.id || t.toAccountId === a.id) && t.date >= monthR.start && t.date <= monthR.end);
-      const inM = U.sum(mov, (t) => (t.type === 'income' || (t.type === 'transfer' && t.toAccountId === a.id) ? t.amount : 0));
-      const outM = U.sum(mov, (t) => (t.type === 'expense' || (t.type === 'transfer' && t.accountId === a.id) ? t.amount : 0));
+      const inM = U.sum(mov, (t) => (t.type === 'income' || (t.type === 'transfer' && t.toAccountId === a.id) || (t.type === 'adjust' && t.amount > 0) ? Math.abs(t.amount) : 0));
+      const outM = U.sum(mov, (t) => (t.type === 'expense' || (t.type === 'transfer' && t.accountId === a.id) || (t.type === 'adjust' && t.amount < 0) ? Math.abs(t.amount) : 0));
+      const share = liquid && bal > 0 ? bal / liquid : 0;
       return `<div class="acc card glass ${a.archived ? 'paused' : ''}" data-id="${a.id}">
-        <div class="acc-top"><span class="cat-ic lg">${icon(ACCOUNT_ICONS[a.type] || 'wallet', 20)}</span><div><b>${U.esc(a.name)}</b><small class="muted">${ACCOUNT_TYPES[a.type] || 'Cuenta'}${a.archived ? ' · Archivada' : ''}</small></div>
-          <button class="icon-btn" data-action="accEdit" aria-label="Editar cuenta">${icon('edit', 18)}</button></div>
+        <div class="acc-top">
+          <span class="cat-ic lg">${icon(accIcon(a), 20)}</span>
+          <div><b>${U.esc(a.name)}</b><small class="muted">${U.esc([ACCOUNT_TYPES[a.type] || 'Cuenta', a.place, a.archived ? 'Archivada' : ''].filter(Boolean).join(' · '))}</small></div>
+          <button class="icon-btn" data-action="accEdit" aria-label="Editar ${U.esc(a.name)}">${icon('edit', 18)}</button>
+        </div>
         <b class="acc-bal tnum">${U.money(bal)}</b>
+        ${a.archived ? '' : `<div class="acc-share"><span class="bar"><i style="width:${share * 100}%"></i></span><small class="muted tnum">${U.pct(share)} de tu dinero</small></div>`}
         <div class="kv small"><span>Este mes</span><span class="tnum">+${U.money(inM)} · −${U.money(outM)}</span></div>
+        <div class="goal-actions">
+          ${a.archived
+            ? `<button class="btn btn-sm" data-action="accRestore">${icon('rotate', 16)} Restaurar</button><button class="btn btn-sm btn-danger-ghost" data-action="accRemove">${icon('trash', 16)} Quitar</button>`
+            : `<button class="btn btn-primary btn-sm" data-action="accAdjust">${icon('sliders', 16)} Ajustar saldo</button><button class="btn btn-sm" data-action="accMove">${icon('swap', 16)} Mover</button>`}
+        </div>
       </div>`;
     };
+    const addTile = (type, label, hint) => `<button class="acc add-tile" data-action="accNew" data-type="${type}">
+      <span class="cat-ic lg">${icon('plus', 22)}</span><b>${label}</b><small class="muted">${hint}</small></button>`;
+    const part = (label, value, ic, sign = '') => `<div class="nw-part"><span class="cat-ic">${icon(ic, 16)}</span><span class="nw-l">${label}</span><b class="tnum">${sign}${U.money(value)}</b></div>`;
+
     const html = `
-      <div class="period"><div class="muted">El saldo se calcula con el saldo inicial y todos tus movimientos.</div>
-        <div class="period-actions">
-          <button class="btn" data-action="add" data-type="transfer">${icon('swap', 18)} Transferir</button>
-          <button class="btn btn-primary" data-action="accNew">${icon('plus', 18)} Nueva cuenta</button>
-        </div></div>
-      <section class="grid g-4">
-        <div class="card glass">${H.stat('Saldo en cuentas', U.money(nw.accounts))}</div>
-        <div class="card glass">${H.stat('Inversiones', U.money(nw.investments))}</div>
-        <div class="card glass">${H.stat('Deudas netas', signed(nw.owed - nw.owe))}</div>
-        <div class="card glass">${H.stat('Patrimonio neto', U.money(nw.total))}</div>
+      <section class="card glass nw-hero">
+        <div class="nw-top">
+          <div>${H.stat('Patrimonio neto', U.money(nw.total), `<span class="delta muted">Bancos + efectivo + inversiones + lo que te deben − lo que debes</span>`)}</div>
+          <div class="period-actions">
+            <button class="btn" data-action="add" data-type="transfer">${icon('swap', 18)} Mover dinero</button>
+          </div>
+        </div>
+        <div class="nw-parts">
+          ${part('Bancos', nw.banks, 'bank')}
+          ${part('Efectivo', nw.cash, 'home')}
+          ${part('Inversiones', nw.investments, 'trendingUp')}
+          ${part('Me deben', nw.owed, 'users')}
+          ${part('Debo', nw.owe, 'card', '−')}
+        </div>
       </section>
-      <section class="grid g-3">${accs.filter((a) => !a.archived).map(card).join('')}</section>
-      ${accs.some((a) => a.archived) ? `<p class="label-row">Archivadas</p><section class="grid g-3">${accs.filter((a) => a.archived).map(card).join('')}</section>` : ''}`;
+
+      <section class="acc-section">
+        <div class="sec-h"><h3>${icon('bank', 18)} Cuentas bancarias <span class="muted">· ${banks.length}</span></h3><b class="tnum">${U.money(nw.banks)}</b></div>
+        <div class="grid g-3">${banks.map(card).join('')}${addTile('banco', 'Añadir cuenta bancaria', 'Nómina, ahorro, tarjeta, Revolut…')}</div>
+      </section>
+
+      <section class="acc-section">
+        <div class="sec-h"><h3>${icon('home', 18)} Efectivo por lugares <span class="muted">· ${cash.length}</span></h3><b class="tnum">${U.money(nw.cash)}</b></div>
+        <div class="grid g-3">${cash.map(card).join('')}${addTile('efectivo', 'Añadir efectivo en un lugar', 'Casa, casa de tus padres, cartera, caja fuerte…')}</div>
+      </section>
+
+      ${archived.length ? `<section class="acc-section"><div class="sec-h"><h3>${icon('package', 18)} Archivadas <span class="muted">· no cuentan en el patrimonio</span></h3></div><div class="grid g-3">${archived.map(card).join('')}</div></section>` : ''}
+
+      <section class="card glass">
+        ${H.sectionHead('Últimos ajustes de saldo', '<span class="muted small">No cuentan como gasto ni ingreso</span>')}
+        ${adjustments.length ? `<div class="tx-list">${adjustments.map((t) => H.txRow(t, { showDate: true })).join('')}</div>`
+          : `<p class="muted small">Cuando cuentes el dinero de un lugar o revises tu banco, pulsa «Ajustar saldo» en esa cuenta y escribe la cantidad real. Tu patrimonio se actualiza al momento.</p>`}
+      </section>`;
     return {
       html,
       actions: {
-        accNew: () => Forms.account(),
+        accNew: (el) => Forms.account({ type: el.dataset.type }),
         accEdit: (el) => Forms.account(byId('accounts', el)),
+        accAdjust: (el) => Forms.adjust(byId('accounts', el)),
+        accMove: (el) => Forms.tx({ type: 'transfer', accountId: byId('accounts', el).id }),
+        accRemove: (el) => Forms.removeAccount(byId('accounts', el)),
+        accRestore: (el) => { const a = byId('accounts', el); Store.update('accounts', a.id, { archived: false }); UI.toast(`${a.name} vuelve a contar en tu patrimonio`); },
       },
     };
   };

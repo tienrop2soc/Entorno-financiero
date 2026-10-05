@@ -29,7 +29,7 @@ No necesita servidor ni instalación: es HTML, CSS y JavaScript sin dependencias
 | Ahorro | Metas con progreso, aportaciones y cuánto apartar al mes para llegar a tiempo. |
 | Deudas | Lo que debes y lo que te deben, con pagos que pueden registrarse como gasto o ingreso. |
 | Inversiones | Capital invertido, valor actual y rentabilidad. |
-| Cuentas | Saldos por cuenta, transferencias y patrimonio neto. |
+| Cuentas y efectivo | Patrimonio neto desglosado. Apartado de cuentas bancarias y otro de efectivo por lugares (casa, cartera, caja fuerte…). Añadir, editar, archivar o eliminar cuentas, mover dinero entre ellas y «Ajustar saldo» para fijar la cantidad real, añadir o retirar dinero sin que cuente como gasto o ingreso. |
 | Ajustes | Nombre, moneda, inicio de semana, tema, categorías, accesos rápidos, copia de seguridad e importación. |
 
 ## Añadir gastos rápido
