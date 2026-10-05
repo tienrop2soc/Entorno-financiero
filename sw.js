@@ -1,10 +1,6 @@
 /* Service worker: la app funciona sin conexión tras la primera visita. */
-const CACHE = 'entorno-financiero-v2';
-const ASSETS = [
-  './', './index.html', './css/styles.css', './manifest.webmanifest', './icons/icon.svg',
-  './js/icons.js', './js/utils.js', './js/store.js', './js/ui.js', './js/charts.js',
-  './js/forms.js', './js/views-main.js', './js/views-plan.js', './js/app.js',
-];
+const CACHE = 'entorno-financiero-simple-v1';
+const ASSETS = ['./', './index.html', './css/styles.css', './js/app.js', './manifest.webmanifest', './icons/icon.svg'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });

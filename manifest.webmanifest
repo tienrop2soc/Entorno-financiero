@@ -1,9 +1,9 @@
 {
   "name": "Entorno Financiero",
   "short_name": "Finanzas",
-  "description": "Control personal de gastos, ingresos, nómina, presupuestos, ahorro, deudas e inversiones.",
+  "description": "Tus cuentas, tu efectivo y tus inversiones en un solo lugar.",
   "lang": "es",
-  "start_url": "./index.html#/resumen",
+  "start_url": "./index.html#/cuentas",
   "scope": "./",
   "display": "standalone",
   "background_color": "#000000",
