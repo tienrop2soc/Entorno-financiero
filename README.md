@@ -4,12 +4,18 @@ App web sencilla para saber cuánto dinero tienes. Estilo cristal líquido en bl
 
 Enlace: https://tienrop2soc.github.io/Entorno-financiero/
 
-## Dos páginas
+## Cómo funciona
 
-| Página | Qué hace |
+| Parte | Qué hace |
 |---|---|
-| Cuentas | Tus cuentas del banco y tu efectivo en distintos lugares (casa, cartera…). Toca una para cambiar su saldo. Arriba ves el total y el patrimonio con inversiones. |
-| Inversiones | Cada inversión con lo que pusiste y lo que vale hoy. Calcula la ganancia y la rentabilidad. Toca una para actualizar su valor. |
+| Cuentas | Total de bancos y efectivo, resumen del mes con ingresos, gastos y en qué se va el dinero, tus cuentas y lugares con efectivo, y los últimos movimientos. |
+| Página de cada cuenta | Toca una cuenta o un lugar para ver su saldo, lo que ha entrado y salido este mes y todos sus movimientos. Tiene botones para apuntar un gasto, un ingreso o mover dinero. |
+| Botón + | Menú para apuntar un gasto, un ingreso, mover dinero entre cuentas o añadir una inversión. |
+| Inversiones | Cada inversión con lo que pusiste y lo que vale hoy. Calcula la ganancia y la rentabilidad. |
+
+Cada gasto o ingreso se asigna a una cuenta del banco o a un lugar con efectivo, y su saldo se actualiza solo. Al editar o borrar un movimiento, el saldo se corrige. Si cambias el saldo a mano, la diferencia se guarda como «Ajuste de saldo» y no cuenta como gasto ni ingreso.
+
+Atajos de teclado: N para un gasto, I para un ingreso, Esc para cerrar.
 
 El botón de los tres puntos abre los ajustes: tema blanco o negro, moneda, copia de seguridad e importación.
 
