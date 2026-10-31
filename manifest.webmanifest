@@ -1,6 +1,6 @@
 {
-  "name": "Entorno Financiero",
-  "short_name": "Finanzas",
+  "name": "JP Morgan",
+  "short_name": "JP Morgan",
   "description": "Tus cuentas, tu efectivo y tus inversiones en un solo lugar.",
   "lang": "es",
   "start_url": "./index.html#/cuentas",
