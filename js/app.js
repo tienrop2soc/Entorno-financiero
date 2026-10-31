@@ -1,5 +1,5 @@
 'use strict';
-/* Entorno Financiero · Cuentas (bancos y efectivo) con gastos e ingresos, e Inversiones. */
+/* JP Morgan (app personal) · Dos cuentas con gastos e ingresos, e Inversiones. */
 
 /* ---------------- Iconos ---------------- */
 const ICONS = {
@@ -36,6 +36,7 @@ const ICONS = {
   gift: '<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>',
   percent: '<line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
   phone: '<rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>',
+  droplet: '<path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>',
   tag: '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
 };
 const icon = (n, s = 20) => `<svg class="i" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ICONS.more}</svg>`;
@@ -76,6 +77,12 @@ function dayLabel(s) {
   const dt = new Date(y, m - 1, d);
   return cap(new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: y === new Date().getFullYear() ? undefined : 'numeric' }).format(dt));
 }
+/* Saludo en inglés según la hora del día. */
+const greetWord = () => {
+  const h = new Date().getHours();
+  return h >= 6 && h < 12 ? 'Good morning' : h >= 12 && h < 20 ? 'Good afternoon' : 'Good evening';
+};
+const USER_NAME = 'A.J';
 const monthName = () => cap(new Intl.DateTimeFormat('es-ES', { month: 'long' }).format(new Date()));
 const fmtCache = {};
 function money(n) {
@@ -112,6 +119,11 @@ const OLD_CAT_MAP = {
   c_nomina: 'nomina', c_freelance: 'nomina', c_ventas: 'ventas', c_regalos_in: 'regalo', c_intereses: 'intereses',
   c_inversiones: 'intereses', c_reembolsos: 'bizum', c_cobros: 'bizum',
 };
+/* Las dos únicas cuentas de la app. */
+const FIXED_ACCOUNTS = [
+  { id: 'enterprise', name: 'Enterprise account', icon: 'briefcase' },
+  { id: 'liquid', name: 'Liquid account', icon: 'droplet' },
+];
 const Store = {
   KEY: 'entorno-financiero:simple:v1',
   OLD_KEY: 'entorno-financiero:v1',
@@ -128,7 +140,19 @@ const Store = {
     } catch (e) {
       this.state = this.defaults();
     }
+    this.ensureFixed();
+    this.persist();
   },
+  /* Crea las dos cuentas si no existen. Otras cuentas antiguas se conservan ocultas. */
+  ensureFixed() {
+    for (const f of FIXED_ACCOUNTS) {
+      const a = this.state.accounts.find((x) => x.id === f.id);
+      if (a) { a.name = f.name; a.fixed = true; }
+      else this.state.accounts.push({ id: f.id, name: f.name, type: 'banco', balance: 0, fixed: true });
+    }
+  },
+  visibleAccounts() { return FIXED_ACCOUNTS.map((f) => this.account(f.id)).filter(Boolean); },
+  isVisible(id) { return FIXED_ACCOUNTS.some((f) => f.id === id); },
   clean(s) {
     const d = this.defaults();
     return {
@@ -277,7 +301,7 @@ const Store = {
   flow(from, accountId) {
     let income = 0, expense = 0;
     for (const m of this.state.movements) {
-      if (m.date < from || (accountId && m.accountId !== accountId)) continue;
+      if (m.date < from || !this.isVisible(m.accountId) || (accountId && m.accountId !== accountId)) continue;
       if (m.type === 'income') income += m.amount;
       else if (m.type === 'expense') expense += m.amount;
     }
@@ -285,16 +309,17 @@ const Store = {
   },
   expenseByCat(from) {
     const map = {};
-    for (const m of this.state.movements) if (m.type === 'expense' && m.date >= from) map[m.cat] = (map[m.cat] || 0) + m.amount;
+    for (const m of this.state.movements) if (m.type === 'expense' && m.date >= from && this.isVisible(m.accountId)) map[m.cat] = (map[m.cat] || 0) + m.amount;
     return Object.entries(map).map(([k, v]) => ({ cat: catInfo('expense', k), total: round2(v) })).sort((a, b) => b.total - a.total);
   },
   totals() {
     const s = this.state;
-    const banks = round2(sum(s.accounts.filter((a) => a.type !== 'efectivo'), (a) => a.balance));
-    const cash = round2(sum(s.accounts.filter((a) => a.type === 'efectivo'), (a) => a.balance));
+    const accs = this.visibleAccounts();
+    const bal = (id) => round2((accs.find((a) => a.id === id) || {}).balance || 0);
+    const moneyTotal = round2(sum(accs, (a) => a.balance));
     const value = round2(sum(s.investments, (i) => i.value));
     const invested = round2(sum(s.investments, (i) => i.invested));
-    return { banks, cash, money: round2(banks + cash), value, invested, gain: round2(value - invested), total: round2(banks + cash + value) };
+    return { enterprise: bal('enterprise'), liquid: bal('liquid'), money: moneyTotal, value, invested, gain: round2(value - invested), total: round2(moneyTotal + value) };
   },
 };
 
@@ -372,55 +397,33 @@ document.addEventListener('change', (e) => {
 const field = (label, control, hint = '') => `<label class="field"><span class="field-l">${label}</span>${control}${hint ? `<span class="field-h">${hint}</span>` : ''}</label>`;
 const moneyIn = (name, value, attrs = '') => `<div class="money-in"><input class="input" type="text" inputmode="decimal" name="${name}" value="${esc(inputAmount(value))}" placeholder="0,00" autocomplete="off" ${attrs}><span>${esc(symbol())}</span></div>`;
 const formData = (f) => Object.fromEntries(new FormData(f).entries());
-const accIcon = (a) => (a && a.type === 'efectivo' ? 'cash' : 'bank');
-const accLabel = (a) => (a ? `${a.name}${a.type === 'efectivo' ? ' · efectivo' : ''}` : 'Cuenta eliminada');
-const accOptions = (selected) => Store.state.accounts.map((a) => `<option value="${a.id}" ${a.id === selected ? 'selected' : ''}>${esc(accLabel(a))}</option>`).join('');
+const accIcon = (a) => ((a && FIXED_ACCOUNTS.find((f) => f.id === a.id)) || { icon: 'bank' }).icon;
+const accLabel = (a) => (a ? a.name : 'Cuenta eliminada');
+const accOptions = (selected) => Store.visibleAccounts().map((a) => `<option value="${a.id}" ${a.id === selected ? 'selected' : ''}>${esc(accLabel(a))}</option>`).join('');
 
 /* ---------------- Formularios ---------------- */
-function editAccount(acc = {}) {
-  const editing = !!acc.id;
-  const type = acc.type || 'banco';
+/* Cambiar a mano el saldo de una de las dos cuentas. */
+function editBalance(acc) {
+  if (!acc) return;
   sheet({
-    title: editing ? `Editar ${acc.name}` : type === 'efectivo' ? 'Nuevo efectivo' : 'Nueva cuenta',
+    title: acc.name,
     body: `<form autocomplete="off">
-      ${seg('type', [{ value: 'banco', label: 'Banco' }, { value: 'efectivo', label: 'Efectivo' }], type)}
-      ${field('Nombre', `<input class="input" name="name" value="${esc(acc.name || '')}" placeholder="${type === 'efectivo' ? 'p. ej. Casa, Cartera, Casa de mis padres' : 'p. ej. BBVA, ING, Revolut'}" maxlength="40" ${editing ? '' : 'autofocus'} required>`)}
-      ${field(editing ? 'Saldo actual' : 'Cuánto hay ahora', moneyIn('balance', acc.balance), editing ? 'Si lo cambias, la diferencia se apunta como «Ajuste de saldo». No cuenta como gasto ni ingreso.' : 'Después apunta aquí tus gastos e ingresos y el saldo se actualiza solo.')}
+      <label class="amount-big"><input type="text" inputmode="decimal" name="balance" placeholder="0,00" value="${esc(inputAmount(acc.balance))}" aria-label="Saldo" autofocus><span class="amount-cur">${esc(symbol())}</span></label>
+      <p class="amount-hint muted">Escribe el saldo real que tienes ahora</p>
+      <p class="field-h">La diferencia se apunta como «Ajuste de saldo». No cuenta como gasto ni ingreso.</p>
       <button type="submit" hidden></button>
     </form>`,
-    footer: `${editing ? `<button class="btn btn-ghost" data-act="del">${icon('trash', 18)} Eliminar</button>` : ''}<button class="btn btn-primary" data-act="save">${icon('check', 18)} Guardar</button>`,
+    footer: `<button class="btn" data-act="close">Cancelar</button><button class="btn btn-primary" data-act="save">${icon('check', 18)} Guardar</button>`,
     actions: {
       save: (a, m) => {
-        const f = formData(m.$('form'));
-        const balance = round2(parseAmount(f.balance));
-        const name = f.name.trim();
-        if (!name) return toast('Pon un nombre.');
-        if (!editing) {
-          const created = Store.upsert('accounts', { name, type: f.type, balance: isFinite(balance) ? balance : 0 });
-          toast(`${name} añadida`);
-          m.close();
-          location.hash = `#/cuenta/${created.id}`;
-          return;
-        }
-        Store.state.accounts.find((x) => x.id === acc.id).name = name;
-        Store.state.accounts.find((x) => x.id === acc.id).type = f.type;
-        const current = Store.account(acc.id).balance;
-        if (isFinite(balance) && round2(balance - current) !== 0) {
-          const mv = Store.addMovement({ type: 'adjust', amount: round2(balance - current), accountId: acc.id, date: today(), note: 'Ajuste de saldo' });
-          toast(`${name}: ${money(balance)}`, 'Deshacer', () => { const r = Store.removeMovement(mv.id); return r; });
-        } else {
-          Store.save();
-          toast('Cambios guardados');
-        }
+        const balance = round2(parseAmount(formData(m.$('form')).balance));
+        if (!isFinite(balance)) return toast('Escribe el saldo.');
+        const diff = round2(balance - Store.account(acc.id).balance);
+        if (diff) {
+          const mv = Store.addMovement({ type: 'adjust', amount: diff, accountId: acc.id, date: today(), note: 'Ajuste de saldo' });
+          toast(`${acc.name}: ${money(balance)}`, 'Deshacer', () => Store.removeMovement(mv.id));
+        } else toast('El saldo no cambia');
         m.close();
-      },
-      del: async (a, m) => {
-        const n = Store.movementsOf(acc.id).length;
-        if (!(await confirmBox(`Se quitará «${acc.name}»${n ? ` con sus ${n} movimientos` : ''} y su saldo dejará de contar.`))) return;
-        const r = Store.removeAccount(acc.id);
-        m.close();
-        location.hash = '#/cuentas';
-        toast(`${acc.name} eliminada`, 'Deshacer', () => Store.restoreAccount(r));
       },
     },
   });
@@ -428,17 +431,14 @@ function editAccount(acc = {}) {
 
 /* Alta o edición de gasto, ingreso o traspaso. */
 function movementForm({ type = 'expense', accountId, mov } = {}) {
-  if (!Store.state.accounts.length) {
-    toast('Primero añade una cuenta o un lugar con efectivo.');
-    return editAccount();
-  }
   if (mov && mov.type === 'adjust') return adjustInfo(mov);
   const editing = !!mov;
   let t = editing ? mov.type : type;
-  const accs = Store.state.accounts;
+  const accs = Store.visibleAccounts();
+  const ok = (id) => id && accs.some((a) => a.id === id);
   const lastAcc = Store.state.settings.lastAccount;
-  const defAcc = (editing && mov.accountId) || (accountId && Store.account(accountId) && accountId) || (lastAcc && Store.account(lastAcc) && lastAcc) || accs[0].id;
-  const defTo = (editing && mov.toAccountId) || (accs.find((a) => a.id !== defAcc) || accs[0]).id;
+  const defAcc = (editing && ok(mov.accountId) && mov.accountId) || (ok(accountId) && accountId) || (ok(lastAcc) && lastAcc) || accs[0].id;
+  const defTo = (editing && ok(mov.toAccountId) && mov.toAccountId) || (accs.find((a) => a.id !== defAcc) || accs[0]).id;
   let selectedCat = editing ? mov.cat : null;
 
   const catChips = () => {
@@ -552,7 +552,7 @@ function addMenu(accountId) {
     body: `<div class="menu">
       <button class="menu-i" data-act="go" data-type="expense"><span class="menu-ic">${icon('arrowOut', 22)}</span><span><b>Gasto</b><small>Una compra, una factura, una cena…</small></span>${icon('chev', 18)}</button>
       <button class="menu-i" data-act="go" data-type="income"><span class="menu-ic">${icon('arrowIn', 22)}</span><span><b>Ingreso</b><small>Nómina, un Bizum, una venta…</small></span>${icon('chev', 18)}</button>
-      <button class="menu-i" data-act="go" data-type="transfer"><span class="menu-ic">${icon('swap', 22)}</span><span><b>Mover dinero</b><small>Del banco a casa, entre cuentas…</small></span>${icon('chev', 18)}</button>
+      <button class="menu-i" data-act="go" data-type="transfer"><span class="menu-ic">${icon('swap', 22)}</span><span><b>Mover dinero</b><small>Entre Enterprise account y Liquid account</small></span>${icon('chev', 18)}</button>
       <button class="menu-i" data-act="inv"><span class="menu-ic">${icon('trend', 22)}</span><span><b>Inversión</b><small>Añadir una inversión nueva</small></span>${icon('chev', 18)}</button>
     </div>`,
     actions: {
@@ -635,7 +635,7 @@ function settings() {
         const blob = new Blob([JSON.stringify({ app: 'entorno-financiero-simple', exportedAt: new Date().toISOString(), ...Store.state }, null, 2)], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = `entorno-financiero-${today()}.json`;
+        a.download = `jp-morgan-${today()}.json`;
         document.body.appendChild(a);
         a.click();
         setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
@@ -643,8 +643,9 @@ function settings() {
       },
       import: (a, m) => m.$('input[type=file]').click(),
       reset: async (a, m) => {
-        if (!(await confirmBox('Se borrarán todas tus cuentas, movimientos e inversiones de este dispositivo.', 'Borrar todo'))) return;
+        if (!(await confirmBox('Se borrarán los saldos, movimientos e inversiones de este dispositivo.', 'Borrar todo'))) return;
         Store.state = Store.defaults();
+        Store.ensureFixed();
         Store.save();
         applyTheme();
         m.close();
@@ -668,6 +669,7 @@ async function importJson(file, m) {
       Store.state = Store.clean(data);
       Store.state.version = 3;
     }
+    Store.ensureFixed();
     Store.save();
     applyTheme();
     m.close();
@@ -706,7 +708,7 @@ function movRow(m, fromAccountId) {
   } else if (m.type === 'adjust') {
     ic = 'sliders';
     title = m.note || 'Ajuste de saldo';
-    sub = fromAccountId ? 'Ajuste de saldo' : accLabel(a);
+    sub = fromAccountId ? (title === 'Ajuste de saldo' ? '' : 'Ajuste de saldo') : accLabel(a);
     amount = m.amount;
   } else {
     const c = catInfo(m.type, m.cat);
@@ -745,29 +747,29 @@ function pageCuentas() {
   const flow = Store.flow(ms);
   const cats = Store.expenseByCat(ms).slice(0, 4);
   const maxCat = cats.length ? cats[0].total : 1;
-  const recent = [...s.movements].sort((x, y) => y.date.localeCompare(x.date) || (y.createdAt || 0) - (x.createdAt || 0)).slice(0, 6);
-
-  const group = (type, title, ic, total, addLabel) => {
-    const list = s.accounts.filter((a) => (type === 'efectivo' ? a.type === 'efectivo' : a.type !== 'efectivo'));
-    return `<section class="card glass">
-      <div class="card-h"><h2>${icon(ic, 18)} ${title}</h2><b class="tnum">${money(total)}</b></div>
-      ${list.length ? `<div class="rows">${list.map((a) => {
-        const f = Store.flow(ms, a.id);
-        const sub = f.income || f.expense ? `${monthName()}: ${f.income ? '+' + money(f.income) : ''}${f.income && f.expense ? ' · ' : ''}${f.expense ? '−' + money(f.expense) : ''}` : 'Sin movimientos este mes';
-        return row({ act: 'open', id: a.id, ic, name: a.name, sub, value: money(a.balance) });
-      }).join('')}</div>`
-        : `<p class="empty muted">${type === 'efectivo' ? 'Añade el dinero que tienes en casa, en la cartera o en otros sitios.' : 'Añade tus cuentas del banco con su saldo actual.'}</p>`}
-      <button class="add-btn" data-act="new" data-type="${type}">${icon('plus', 18)} ${addLabel}</button>
-    </section>`;
-  };
+  const recent = s.movements.filter((m) => Store.isVisible(m.accountId) || Store.isVisible(m.toAccountId))
+    .sort((x, y) => y.date.localeCompare(x.date) || (y.createdAt || 0) - (x.createdAt || 0)).slice(0, 6);
+  const date = cap(new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()));
   return `
+    <section class="greet">
+      <p class="greet-date">${esc(date)}</p>
+      <h1 class="greet-t"><span class="greet-w">${greetWord()}</span>, <span class="gold">${esc(USER_NAME)}</span></h1>
+    </section>
     <section class="hero glass">
-      <span class="hero-l">Dinero en cuentas y efectivo</span>
+      <span class="hero-l">Saldo total</span>
       <b class="hero-v tnum">${money(t.money)}</b>
-      <div class="hero-split"><span>Bancos <b class="tnum">${money(t.banks)}</b></span><span>Efectivo <b class="tnum">${money(t.cash)}</b></span></div>
+      <div class="hero-split"><span>Enterprise <b class="tnum">${money(t.enterprise)}</b></span><span>Liquid <b class="tnum">${money(t.liquid)}</b></span></div>
       <span class="hero-foot">Patrimonio total con inversiones: <b class="tnum">${money(t.total)}</b></span>
     </section>
-    ${s.accounts.length ? quickActions() : ''}
+    ${quickActions()}
+    <section class="card glass">
+      <div class="card-h"><h2>${icon('wallet', 18)} Cuentas</h2><b class="tnum">${money(t.money)}</b></div>
+      <div class="rows">${Store.visibleAccounts().map((a) => {
+        const f = Store.flow(ms, a.id);
+        const sub = f.income || f.expense ? `${monthName()}: ${f.income ? '+' + money(f.income) : ''}${f.income && f.expense ? ' · ' : ''}${f.expense ? '−' + money(f.expense) : ''}` : 'Sin movimientos este mes';
+        return row({ act: 'open', id: a.id, ic: accIcon(a), name: a.name, sub, value: money(a.balance) });
+      }).join('')}</div>
+    </section>
     <section class="card glass">
       <div class="card-h"><h2>${monthName()}</h2><span class="muted small">Este mes</span></div>
       <div class="stats3">
@@ -778,13 +780,12 @@ function pageCuentas() {
       ${cats.length ? `<div class="cat-bars">${cats.map((c) => `<div class="cat-row"><span class="cat-ic">${icon(c.cat.icon, 16)}</span><span class="cat-main"><span class="cat-top"><span>${esc(c.cat.name)}</span><b class="tnum">${money(c.total)}</b></span><span class="bar"><i style="width:${Math.max(3, (c.total / maxCat) * 100)}%"></i></span></span></div>`).join('')}</div>`
         : `<p class="empty muted">Cuando apuntes gastos verás aquí en qué se te va el dinero.</p>`}
     </section>
-    ${group('banco', 'Bancos', 'bank', t.banks, 'Añadir cuenta')}
-    ${group('efectivo', 'Efectivo', 'cash', t.cash, 'Añadir efectivo')}
-    ${recent.length ? `<section class="card glass"><div class="card-h"><h2>Últimos movimientos</h2></div>${movGroups(recent)}</section>` : ''}`;
+    ${recent.length ? `<section class="card glass"><div class="card-h"><h2>Últimos movimientos</h2></div>${movGroups(recent)}</section>` : ''}
+    <p class="legal">App personal. No tiene relación con JPMorgan Chase &amp; Co.</p>`;
 }
 
 function pageCuenta(id) {
-  const a = Store.account(id);
+  const a = Store.isVisible(id) && Store.account(id);
   if (!a) return `<section class="card glass"><p class="empty muted">Esta cuenta ya no existe.</p><a class="add-btn" href="#/cuentas">Volver a cuentas</a></section>`;
   const ms = monthStart();
   const f = Store.flow(ms, id);
@@ -792,10 +793,10 @@ function pageCuenta(id) {
   return `
     <div class="crumbs">
       <a class="back glass-pill" href="#/cuentas">${icon('chevL', 18)} Cuentas</a>
-      <button class="back glass-pill" data-act="editAcc" data-id="${a.id}">${icon('edit', 16)} Editar</button>
+      <button class="back glass-pill" data-act="editAcc" data-id="${a.id}">${icon('sliders', 16)} Ajustar saldo</button>
     </div>
     <section class="hero glass">
-      <span class="hero-l acc-title">${icon(accIcon(a), 18)} ${esc(a.name)} <span class="muted">· ${a.type === 'efectivo' ? 'Efectivo' : 'Banco'}</span></span>
+      <span class="hero-l acc-title"><span class="gold">${icon(accIcon(a), 18)}</span> ${esc(a.name)}</span>
       <b class="hero-v tnum">${money(a.balance)}</b>
       <div class="hero-split"><span>Ingresos en ${monthName().toLowerCase()} <b class="tnum">${money(f.income)}</b></span><span>Gastos <b class="tnum">${money(f.expense)}</b></span></div>
     </section>
@@ -814,7 +815,7 @@ function pageInversiones() {
       <span class="hero-l">Valor de tus inversiones</span>
       <b class="hero-v tnum">${money(t.value)}</b>
       <div class="hero-split"><span>Invertido <b class="tnum">${money(t.invested)}</b></span><span>Ganancia <b class="tnum">${signed(t.gain)}</b> <span class="muted">${pct(ret)}</span></span></div>
-      <span class="hero-foot">Patrimonio total con cuentas y efectivo: <b class="tnum">${money(t.total)}</b></span>
+      <span class="hero-foot">Patrimonio total con tus cuentas: <b class="tnum">${money(t.total)}</b></span>
     </section>
     <section class="card glass">
       <div class="card-h"><h2>${icon('trend', 18)} Mis inversiones</h2><span class="muted small">${s.investments.length}</span></div>
@@ -849,6 +850,9 @@ const App = {
       if (e.key === 'i' || e.key === 'I') movementForm({ type: 'income', accountId: this.accountId });
     });
     this.route();
+    const refreshGreeting = () => { const g = $('.greet-w'); if (g && g.textContent !== greetWord()) g.textContent = greetWord(); };
+    setInterval(refreshGreeting, 60000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.render(); });
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
   },
   onClick(e) {
@@ -859,14 +863,12 @@ const App = {
     if (act === 'menu') return addMenu(this.accountId);
     if (act === 'add') return movementForm({ type: a.dataset.type, accountId: a.dataset.acc || this.accountId });
     if (act === 'open') { location.hash = `#/cuenta/${id}`; return; }
-    if (act === 'editAcc') return editAccount(Store.account(id));
+    if (act === 'editAcc') return editBalance(Store.account(id));
     if (act === 'mov') { const m = Store.state.movements.find((x) => x.id === id); if (m) movementForm({ mov: m }); return; }
     if (this.page === 'inversiones') {
       if (act === 'new') return editInvestment();
       if (act === 'edit') { const inv = Store.state.investments.find((x) => x.id === id); if (inv) editInvestment(inv); }
-      return;
     }
-    if (act === 'new') return editAccount({ type: a.dataset.type });
   },
   route() {
     const h = location.hash.replace(/^#\/?/, '');
@@ -881,7 +883,7 @@ const App = {
     const v = $('#view');
     v.innerHTML = this.page === 'inversiones' ? pageInversiones() : this.page === 'cuenta' ? pageCuenta(this.accountId) : pageCuentas();
     const acc = this.accountId && Store.account(this.accountId);
-    document.title = `${this.page === 'inversiones' ? 'Inversiones' : acc ? acc.name : 'Cuentas'} · Entorno Financiero`;
+    document.title = this.page === 'inversiones' ? 'Inversiones · JP Morgan' : acc ? `${acc.name} · JP Morgan` : 'JP Morgan';
     $$('#tabbar .tab').forEach((t) => t.classList.toggle('on', t.dataset.page === (this.page === 'inversiones' ? 'inversiones' : 'cuentas')));
   },
 };

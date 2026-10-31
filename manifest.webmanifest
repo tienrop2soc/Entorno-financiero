@@ -1,9 +1,9 @@
 {
   "name": "JP Morgan",
   "short_name": "JP Morgan",
-  "description": "Tus cuentas, tu efectivo y tus inversiones en un solo lugar.",
+  "description": "App personal de finanzas. No tiene relación con JPMorgan Chase & Co.",
   "lang": "es",
-  "start_url": "./index.html#/cuentas",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#000000",

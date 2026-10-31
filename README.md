@@ -1,6 +1,6 @@
-# Entorno Financiero
+# JP Morgan
 
-App web sencilla para saber cuánto dinero tienes. Estilo cristal líquido en blanco y negro, con modo claro y oscuro.
+App web personal para controlar dos cuentas, Enterprise account y Liquid account, y tus inversiones. Estilo cristal líquido en blanco y negro con detalles dorados. No tiene relación con JPMorgan Chase & Co.
 
 Enlace: https://tienrop2soc.github.io/Entorno-financiero/
 
@@ -8,20 +8,18 @@ Enlace: https://tienrop2soc.github.io/Entorno-financiero/
 
 | Parte | Qué hace |
 |---|---|
-| Cuentas | Total de bancos y efectivo, resumen del mes con ingresos, gastos y en qué se va el dinero, tus cuentas y lugares con efectivo, y los últimos movimientos. |
-| Página de cada cuenta | Toca una cuenta o un lugar para ver su saldo, lo que ha entrado y salido este mes y todos sus movimientos. Tiene botones para apuntar un gasto, un ingreso o mover dinero. |
-| Botón + | Menú para apuntar un gasto, un ingreso, mover dinero entre cuentas o añadir una inversión. |
+| Inicio | Saludo según la hora (Good morning, Good afternoon o Good evening), saldo total, las dos cuentas, resumen del mes y últimos movimientos. |
+| Enterprise account y Liquid account | Toca una cuenta para ver su saldo y sus movimientos. Puedes apuntar gastos e ingresos, mover dinero entre las dos o ajustar el saldo a mano. |
+| Botón + | Menú para apuntar un gasto, un ingreso, mover dinero o añadir una inversión. |
 | Inversiones | Cada inversión con lo que pusiste y lo que vale hoy. Calcula la ganancia y la rentabilidad. |
 
-Cada gasto o ingreso se asigna a una cuenta del banco o a un lugar con efectivo, y su saldo se actualiza solo. Al editar o borrar un movimiento, el saldo se corrige. Si cambias el saldo a mano, la diferencia se guarda como «Ajuste de saldo» y no cuenta como gasto ni ingreso.
+El saldo de cada cuenta se actualiza solo al apuntar, editar o borrar un movimiento. Un ajuste de saldo no cuenta como gasto ni ingreso.
 
 Atajos de teclado: N para un gasto, I para un ingreso, Esc para cerrar.
 
-El botón de los tres puntos abre los ajustes: tema blanco o negro, moneda, copia de seguridad e importación.
-
 ## Tus datos
 
-Se guardan solo en el navegador del dispositivo que uses. Exporta una copia de seguridad desde Ajustes de vez en cuando. Si usabas la versión anterior de la app en el mismo navegador, los saldos de tus cuentas y tus inversiones se traspasan solos la primera vez.
+Se guardan solo en el navegador del dispositivo que uses. Exporta una copia de seguridad desde Ajustes de vez en cuando. Las cuentas que creaste en versiones anteriores siguen guardadas en el navegador, pero ya no se muestran.
 
 ## Archivos
 
